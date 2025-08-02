@@ -1,0 +1,26 @@
+{
+  "becomeHoly": {
+    "becomeHoly": "TODO",
+    "bless": "-,-",
+    "curse": "-,</=>",
+    "pray": "-,=>"
+  },
+  "bless": {
+    "becomeHoly": "-,-",
+    "bless": "TODO",
+    "curse": "-,-",
+    "pray": "-,=>"
+  },
+  "curse": {
+    "becomeHoly": "-,</=>",
+    "bless": "-,-",
+    "curse": "TODO",
+    "pray": "<,=>"
+  },
+  "pray": {
+    "becomeHoly": "-,<=",
+    "bless": "-,<=",
+    "curse": ">,<=",
+    "pray": "TODO"
+  }
+}
