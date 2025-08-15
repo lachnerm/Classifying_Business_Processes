@@ -221,14 +221,16 @@ def detect_blocks(relationships):
     optional_blocks = get_optional_blocks(acts, xor_blocks, succs, temporal, existential)
 
     # Identify sequence blocks 
-    sequences = get_sequences(acts, direct_succs, existential)
+    seq_blocks = get_sequences(acts, direct_succs, existential)
 
     # Remove redundant blocks caused by XOR/PAR nesting
     xor_blocks_clean = remove_duplicate_blocks_from_nesting(xor_blocks, par_blocks)
     par_blocks_clean = remove_duplicate_blocks_from_nesting(par_blocks, xor_blocks)
+    seq_blocks_clean = remove_duplicate_blocks_from_nesting(seq_blocks, xor_blocks, include_split_merge=True)
+    seq_blocks_clean = remove_duplicate_blocks_from_nesting(seq_blocks_clean, par_blocks, include_split_merge=True)
 
     # Combine all block types into a unified structure list
-    blocks = xor_blocks_clean + par_blocks_clean + optional_blocks + sequences
+    blocks = xor_blocks_clean + par_blocks_clean + optional_blocks + seq_blocks_clean
 
     return blocks
 
@@ -316,19 +318,9 @@ def get_xor_blocks(acts, preds, succs, direct_preds, direct_succs, temporal, exi
             ]
 
         # get PAR blocks from nested PAR acts for later usage
-        # reduce acts and preds/succs to only current block we're looking at
-        branches_acts = [act for branch in branches for act in branch]
-        nested_par_acts = [
-            x for x in branches_acts for y in branches_acts
-            if x!=y
-            and always[x][y]
-        ]
-        nested_preds = {k: {v for v in vs if v in nested_par_acts} for k, vs in preds.items() if k in nested_par_acts}
-        nested_succs = {k: {v for v in vs if v in nested_par_acts} for k, vs in succs.items() if k in nested_par_acts}
-        nested_direct_preds = {k: {v for v in vs if v in nested_par_acts} for k, vs in direct_preds.items() if k in nested_par_acts}
-        nested_direct_succs = {k: {v for v in vs if v in nested_par_acts} for k, vs in direct_succs.items() if k in nested_par_acts}
-
-        nested_par_blocks = get_par_blocks(nested_par_acts, nested_preds, nested_succs, nested_direct_preds, nested_direct_succs, temporal, existential, always, never)
+        # reduce acts to only current block we're looking at
+        branches_acts = set([act for branch in branches for act in branch])
+        nested_par_blocks = get_par_blocks(branches_acts, preds, succs, direct_preds, direct_succs, temporal, existential, always, never)
 
         # Check for merge acts and clean up branches
         merge = None
@@ -501,11 +493,11 @@ def get_par_blocks(acts, preds, succs, direct_preds, direct_succs, temporal, exi
             ]
 
         # Get acts in branches that are part of a nested XOR for later usage
-        branches_acts = [act for branch in branches for act in branch]
-        nested_xor_acts = [
+        branches_acts = set([act for branch in branches for act in branch])
+        nested_xor_acts = set([
             x for x in branches_acts for y in branches_acts
             if never[x][y]
-        ]
+        ])
 
         # Check for merge acts and clean up branches
         merge = None
@@ -551,18 +543,10 @@ def get_par_blocks(acts, preds, succs, direct_preds, direct_succs, temporal, exi
                         break
 
         # get XOR blocks from nested XOR acts
-        # reduce acts and preds/succs to only current block we're looking at
-        branches_acts = [act for branch in branches for act in branch]
-        nested_xor_acts = [
-            x for x in branches_acts for y in branches_acts
-            if never[x][y]
-        ]
-        nested_preds = {k: {v for v in vs if v in nested_xor_acts} for k, vs in preds.items() if k in nested_xor_acts}
-        nested_succs = {k: {v for v in vs if v in nested_xor_acts} for k, vs in succs.items() if k in nested_xor_acts}
-        nested_direct_preds = {k: {v for v in vs if v in nested_xor_acts} for k, vs in direct_preds.items() if k in nested_xor_acts}
-        nested_direct_succs = {k: {v for v in vs if v in nested_xor_acts} for k, vs in direct_succs.items() if k in nested_xor_acts}
+        # reduce acts to only current block we're looking at
+        branches_acts = set([act for branch in branches for act in branch])
 
-        nested_XOR_blocks = get_xor_blocks(nested_xor_acts, nested_preds, nested_succs, nested_direct_preds, nested_direct_succs, temporal, existential, always, never)
+        nested_XOR_blocks = get_xor_blocks(branches_acts, preds, succs, direct_preds, direct_succs, temporal, existential, always, never)
 
         block_acts = [tuple(branch) if len(branch) > 1 else branch[0] for branch in branches]
 
@@ -652,8 +636,8 @@ def get_optional_blocks(acts, xor_blocks, succs, temporal, existential):
                                 "block_type": "OPTIONAL",
                                 "activities": [z],
                                 "nested": [],
-                                "start": x[0],
-                                "end": y[0]
+                                "start": x,
+                                "end": y
                             })
 
     opt_blocks_clean = []
@@ -780,13 +764,13 @@ def get_sequences(acts, direct_succs, existential):
 
 
 
-def remove_duplicate_blocks_from_nesting(blocks_to_clean, ref_blocks):
+def remove_duplicate_blocks_from_nesting(blocks_to_clean, ref_blocks, include_split_merge=False):
     blocks_cleaned = []
     for block in blocks_to_clean:
         duplicate = False
         for ref_block in ref_blocks:
-            block_acts = flatten_block(block, include_split_merge=False)
-            ref_block_acts = flatten_block(ref_block, include_split_merge=False)
+            block_acts = flatten_block(block, include_split_merge)
+            ref_block_acts = flatten_block(ref_block, include_split_merge)
 
             if all([block_act in ref_block_acts for block_act in block_acts]):
                 duplicate = True
