@@ -106,7 +106,7 @@ Example:
 
 - `classify_process.py`: Main script to run the classification. Handles command-line arguments, calls the classification pipeline, and prints the results table.
 - `block_detection.py`: Implements the detection of control-flow blocks (e.g., XOR, PAR) and the combination of these into super-blocks.
-- `score_processes.py`: Computes process metrics based on detected structures and calculates the final structuredness score.
+- `score_process.py`: Computes process metrics based on detected structures and calculates the final structuredness score.
 - `utils.py`: Contains data loading functions and helper utilities for working with activity relationships.
 - `constants.py`: Defines configurable thresholds and other constants used throughout the project.
 - `helper/matrix_yaml_to_json.py`: Utility script to convert YAML-formatted activity relationship matrices into the JSON format required by the classifier.

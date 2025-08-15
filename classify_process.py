@@ -5,7 +5,7 @@ from tabulate import tabulate
 
 from utils import load_relationships
 from block_detection import detect_blocks, build_super_blocks
-from score_processes import score_process
+from score_process import score_process
 from constants import class_score_thresholds
 
 
