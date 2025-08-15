@@ -1,209 +1,8 @@
 
 from itertools import combinations
-from utils import load_relationships, get_super_block_acts
-from block_detection import detect_blocks, build_super_blocks
-from tabulate import tabulate
+from utils import get_super_block_acts
 import math
-import os
-
-REFINEMENT_SCORES_SB_TO_SB = {
-    # Don't occur
-    #(">d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #("<d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #("-",  "∧"):    -0.60,  # NAND (parallel)
-    #("-",  "v"):    -0.60,  # OR relationship
-    #("<d", "=>"):   +0.30,  # directly leads‑to
-    #(">d", "=>"):   +0.30,  # directly leads‑to
-    #("<d", "<="):   +0.30,  # directly precedes
-    #(">d", "<="):   +0.30,  # directly precedes
-    #("-",  "</=>"): +0.30,  # non‑co‑occurrence (XOR)
-    #(">",  "<="):   +0.50,  # precedes
-    #("<",  "<="):   +0.50,  # precedes
-    #("<d", "-"):    +0.30,  # direct before
-    #(">d", "-"):    +0.30,  # direct after
-
-    # Can occur if there is a fragment that can (but does not have to) occur between two blocks that are ordered
-    # For example log 6, g can occur between both blocks
-    # Also occurs in log 7, 10, 20
-    ("<",  "<=>"):  +0.15,  # ordered co‑occurrence
-    (">",  "<=>"):  +0.15,  # ordered co‑occurrence
-
-    # Similar to ordered co-occurence, but only one-way existential implication
-    # For example log 20, d comes after b/c (XOR without merge) but since neither b nor c have to exist (only one), no co-occurence
-    # No further occurences
-    # Same value as ordered co-occurence as this is only artifact of missing merge
-    ("<",  "=>"):   +0.15,  # leads‑to
-    (">",  "<="):   +0.15,  # precedes
-
-    # Can occur if two blocks are existentially independent, neither has to occur, but if they do, there is a temporal ordering
-    # For example log 13 XOR (b(c,d)) and PAR (g,h) -> here comes from c+d being in XOR and therefore not having to occur, special case
-    # No further occurences
-    ("<",  "-"):    +0.10,   # before
-    (">",  "-"):    +0.10,   # after
-
-    # Can occur if there are blocks that both have to occur but have no temporal ordering
-    # For example log 2 sequence (a,b) and XOR (c,(d,e)) -> (b,c) since both acts have to occur
-    # Also occurs in log 7
-    ("-",  "<=>"):  -0.05,   # co‑occurrence (Parallel)
-
-    # Can occur if two blocks exist but they have no temporal ordering - one block is XOR split without merge, other sequence
-    # -> open acts in XOR don't have to occur, so one way implication
-    # For example log 2 sequence (a,b) and XOR (c,(d,e)) with d XOR e -> (d,a)
-    # No further occurences
-    # NOTE: Same value as co-occurence as this is only artifact of missing merge
-    ("-",  "=>"):   -0.05,   # implication (right)
-    
-    # Can occur for complicated nesting, e.g. log 19
-    ("-",  "<="):   -0.05,   # implication (left)
-
-    # Can occur if two blocks are fully independent - no temporal ordering, neither has to occur
-    # For example log 3 PAR (a,e) and XOR (d,(b,c))
-    # Also occurs in log 13
-    ("-",  "-"):    -0.25,   # fully independent
-}
-
-REFINEMENT_SCORES_OUT_TO_SB = {
-    # Note: Weights are smaller here than others as outsiders are already penalized via base score, don't penalize to strong here
-
-    # Don't occur
-    #("<d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #(">d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #("<d", "=>"):   +0.80,  # directly leads‑to
-    #(">d", "=>"):   +0.80,  # directly leads‑to
-    #("-",  "</=>"): +0.70,  # non‑co‑occurrence (XOR)
-    #("<d", "-"):    +0.60,  # direct before
-    #("-",  "∧"):    -0.30,  # NAND (parallel)
-    #("-",  "v"):    -0.30,  # OR relationship
-    #("<",  "-"):    +0.05,  # before
-    #("<",  "<=>"):  +0.50,  # ordered co‑occurrence
-    #("<d", "<="):   +0.25,  # directly precedes
-    #("<d", "-"):    +0.10,  # direct before
-    #("-",  "</=>"): +0.20,  # non‑co‑occurrence (XOR)
-    #(">d", "<="):   +0.25,  # directly precedes
-
-    # All of these can occur if block and outsider have to occur with temporal ordering, but other outsiders or fragments can occur in between
-    # For example log 20, XOR (a,(b,c)) and g both occur with a being first, but many other activities can occur in between
-    # No further occurences
-    ("<",  "<=>"):  +0.25,  # ordered co‑occurrence
-    (">",  "<=>"):  +0.25,  # ordered co‑occurrence
-
-    # Can occur if block and outsider have to occur without temporal ordering
-    # For example log 20, sequence (d,e) and g both occur without any order
-    # No further occurences
-    ("-",  "<=>"):  +0.20,  # co‑occurrence (Parallel)
-
-    # Can occur with "response" relationship from outsider to block, i.e. outsider comes before block but doesn't have to
-    # For example log 11, f has response relationship to PAR (d,e)
-    # Also occurs in log 21
-    ("<",  "=>"):   +0.15,  # leads‑to
-
-    # Can occur if outsider precedes a block, it comes before 
-    # For example log 3, f precedes c
-    # Also occurs in log 13, 21, 22, 23
-    ("<",  "<="):   +0.15,  # precedes
-
-    # Can occur if outsider comes after block but doesn't have to occur
-    # For example log 7, c can come after sequence (a,b) but doesn't have to
-    # Also occurs in log 10, 12, 17, 18, 20
-    (">",  "=>"):   +0.15,  # leads‑to
-
-    # Can occur if outsider is response to a block, it comes after
-    # For example log 14, pray is response to curse
-    # Also occurs in log 12, 19, 20
-    (">",  "<="):   +0.15,  # precedes
-
-    # Can occur in complex block nesting that is not captured correctly, e.g. if one branch ends in another activity directly, but can also skip this activity and it can be reached else
-    # For example log 12 for (i,g), i can directly follow g, but process can end after g as well, and i can be reached by separate branch
-    (">d", "-"):    +0.10,  # direct after
-
-    # Can occur if outsider and block both don't have to exists, but if they do, they have a temporal ordering
-    # For example log 20, XOR (a,(b,c)) and f -> here for (f,b) and (f,c), but is due to no merge for XOR, special case
-    # Also occurs in log 12
-    (">",  "-"):    +0.05,  # after
-
-
-    # Can occur if outsider and block have no temporal ordering, but one-way existential
-    # For example log 3, XOR (d,(b,c)) and f for (f,b)
-    # Also occurs in log 14, 19, 30
-    ("-",  "<="):   -0.10,  # implication (left)
-
-    # Can occur if block has to exist but outsider is optional without temporal ordering
-    # For example log 2, XOR (c,(d,e)) and f for (f,c)
-    # Also occurs in log 6, 7, 10, 17, 18, 20, 21
-    ("-",  "=>"):   -0.10,  # implication (right)
-    
-    # Can occur for multiple reasons, easiest one: no temporal or existential relationship, straightforward
-    # Can also occur due to XOR (e.g. log 2) without merge due to missing existential link
-    # Occurs in log 2, 3, 7, 11, 13, 14, 16, 21, 22, 23, 24
-    ("-",  "-"):    -0.20,  # fully independent
-}
-
-REFINEMENT_SCORES_OUT_TO_OUT = {
-    # Don't occur
-    #("<d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #(">d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #("<d", "=>"):   +0.80,  # directly leads‑to
-    #("<d", "-"):    +0.60,  # direct before
-    #(">d", "-"):    +0.60,  # direct after
-    #("-",  "∧"):    -0.30,  # NAND (parallel)
-    #("-",  "v"):    -0.30,  # OR relationship
-    #(">",  "<=>"):  +1.00,  # ordered co‑occurrence
-    #("<d",  "-"):    +0.40,  # direct before
-    #(">",  "=>"):   +0.50,  # leads‑to
-
-    # Can occur if complex block nesting doesn't capture all block activities e.g. log 19
-    # Can occur for succession relationship, e.g log 8
-    # Can occur if there is a sequence but other outsiders can occur in between, therefore not capturing sequence, e.g. log 13
-    # Also occurs in log 17, 19, 20, 22, 23
-    ("<",  "<=>"):  +0.25,  # ordered co‑occurrence
-    # NEW after not sorting
-    (">",  "<=>"):  +0.25,  # ordered co‑occurrence
-
-    # For example log 8, (a,b)
-    # No further occurences
-    ("<d", "<="):   +0.20,  # directly precedes
-    ("<d", "=>"):   +0.20,  # directly leads‑to
-    (">d", "<="):   +0.20,  # directly precedes
-    (">d", "=>"):   +0.20,  # directly leads‑to
-
-    # Can occur if XOR relationship exists but boundary conditions for XOR block are not met, e.g. log 8
-    # No further occurences
-    ("-",  "</=>"): +0.10,  # non‑co‑occurrence
-
-    # Can occur if complex block nesting doesn't capture all block activities e.g. log 19
-    # Can occur if PAR relationships exists but boundary conditions for PAR blocks are not met, e.g. log 20
-    # No further occurences
-    ("-",  "<=>"):  +0.10,  # co‑occurrence (Parallel)
-
-    # For example log 16, (c,d)
-    # Log 11
-    ("<",  "=>"):   +0.10,  # leads‑to
-    # Log 8 (e,a)
-    (">",  "=>"):   +0.10,  # leads‑to
-
-    # Occurs in log 8, 13, 21
-    ("<",  "<="):   +0.10,  # precedes
-
-    # For example log 11, (b,c)
-    # No further occurences
-    (">",  "<="):   +0.10,  # precedes
-
-    # For example log 8, (b,g)
-    # Also occurs in log 18
-    # No further occurences
-    ("<",  "-"):    -0.05,  # before
-    (">",  "-"):    -0.05,  # after
-
-    # Occurs in log 8, 13, 20
-    ("-",  "<="):   -0.15,  # implication (left)
-
-    # Occurs in log 8, 11, 14, 20
-    ("-",  "=>"):   -0.15,  # implication (right)
-    
-    # Occurs often
-    ("-",  "-"):    -0.25,  # fully independent
-}
-
+from constants import REFINEMENT_SCORES_OUT_TO_OUT, REFINEMENT_SCORES_OUT_TO_SB, REFINEMENT_SCORES_SB_TO_SB
 
 def compute_base_score(super_blocks, all_acts, entropy_penalty=0.4, outsider_penalty_exponent=1.5):
     """
@@ -230,7 +29,7 @@ def compute_base_score(super_blocks, all_acts, entropy_penalty=0.4, outsider_pen
     Returns:
         base_score (float): Structuredness score in [0, 1], higher = more structured.
         outsider_acts (list of str): Activities not covered by any super-block.
-        reason (str): Explanation string summarizing number of super-blocks.
+        n_sbs_str (str): Explanation string summarizing number of super-blocks.
     """
 
     # Convert activity list to set for faster lookups
@@ -241,9 +40,9 @@ def compute_base_score(super_blocks, all_acts, entropy_penalty=0.4, outsider_pen
     for sb in super_blocks:
         covered_acts.update(sb["activities"])
         if sb["start"]:
-            covered_acts.update(sb["start"])
+            covered_acts.add(sb["start"])
         if sb["end"]:
-            covered_acts.update(sb["end"])
+            covered_acts.add(sb["end"])
 
     # Identify uncovered activities
     outsider_acts = all_acts_set - covered_acts
@@ -251,14 +50,20 @@ def compute_base_score(super_blocks, all_acts, entropy_penalty=0.4, outsider_pen
 
     # Compute coverage fraction for each super-block
     coverage_fractions = []
-    for sb in super_blocks:
-        covered_in_block = len(sb["activities"])
-        if sb["start"]:
-            covered_in_block += 1
-        if sb["end"]:
-            covered_in_block += 1
 
-        coverage_fraction = covered_in_block / total_activity_count if total_activity_count else 0.0
+    # Store acts already included in other super-blocks to avoid computing duplicate coverages
+    already_covered = set()
+    for sb in super_blocks:
+        covered_in_block = sb["activities"].copy()
+        if sb["start"]:
+            covered_in_block.append(sb["start"])
+        if sb["end"]:
+            covered_in_block.append(sb["end"])
+
+        covered_clean = set(covered_in_block) - already_covered
+        already_covered.update(set(covered_in_block))
+
+        coverage_fraction = len(covered_clean) / total_activity_count if total_activity_count else 0.0
         coverage_fractions.append(coverage_fraction)
 
     # Compute total process coverage
@@ -281,13 +86,13 @@ def compute_base_score(super_blocks, all_acts, entropy_penalty=0.4, outsider_pen
 
     # Prepare summary explanation based on number of super-blocks
     if num_blocks == 0:
-        reason = "0 SB"
+        n_sbs_str = "0 SB"
     elif num_blocks == 1:
-        reason = "1 SB"
+        n_sbs_str = "1 SB"
     else:
-        reason = f"{num_blocks} SB"
+        n_sbs_str = f"{num_blocks} SB"
 
-    return base_score, outsider_acts, reason
+    return base_score, outsider_acts, n_sbs_str
 
 
 def refine_sb_to_sb(relations, super_blocks, verbose):
@@ -343,9 +148,9 @@ def refine_sb_to_sb(relations, super_blocks, verbose):
                 continue  # skip self-comparisons
 
             # Use defined end activities if available, else fall back to internal activities
-            end_acts = sb1["end"] if sb1["end"] else sb1["activities"]
+            end_acts = [sb1["end"]] if sb1["end"] else sb1["activities"]
             # Use defined start activities if available, else fall back to internal activities
-            start_acts = sb2["start"] if sb2["start"] else sb2["activities"]
+            start_acts = [sb2["start"]] if sb2["start"] else sb2["activities"]
 
             if verbose:
                 print(f"\nSB{idx1+1}→SB{idx2+1}: end {end_acts} → start {start_acts}")
@@ -578,7 +383,7 @@ def compute_refinement_weights(
 
     return weight_sb_sb, weight_out_sb, weight_out_out
 
-def score_process(path, verbose=False):
+def score_process(path, relationships, super_blocks, verbose=False):
     """
     Computes the overall structuredness score for a given process log.
 
@@ -605,7 +410,7 @@ def score_process(path, verbose=False):
         List of elements summarizing the process and all score components, useful for CSV output:
         [
             process name,
-            reason string (e.g., "3 SB"),
+            n_sbs_str string (e.g., "3 SB"),
             comma-separated insider activities,
             comma-separated outsider activities,
             base score (rounded),
@@ -621,21 +426,12 @@ def score_process(path, verbose=False):
         print("\n" + "=" * 80)
         print(f"ANALYSIS FOR {path}\n")
 
-    # Load pairwise relationship data (temporal + existential) between activities
-    relationships = load_relationships(path)
-
-    # Identify all control-flow blocks based on the relationships
-    blocks = detect_blocks(relationships)
-
-    # Merge connected blocks into higher-level super-blocks
-    super_blocks = build_super_blocks(blocks, relationships)
 
     # Get the full list of activities from the relationship data
     all_acts = set(relationships.keys())
 
-
     # Compute the base structuredness score based on coverage and fragmentation
-    base_score, outsiders, reason = compute_base_score(super_blocks, all_acts)
+    base_score, outsiders, n_sbs_str = compute_base_score(super_blocks, all_acts)
 
     # Compute weights for each of the refinements
     weight_sb_sb, weight_out_sb, weight_out_out = compute_refinement_weights(all_acts, super_blocks)
@@ -685,140 +481,6 @@ def score_process(path, verbose=False):
         print("=" * 80 + "\n")
 
     # Collect all activities that are part of any super-block
-    block_acts = [act for sb in super_blocks for act in get_super_block_acts(sb)]
+    block_acts = set([act for sb in super_blocks for act in get_super_block_acts(sb)])
 
-    # Format insider and outsider activity sets as strings for output
-    insider_str = ",".join(sorted(block_acts)) if block_acts else "-"
-    outsider_str = ",".join(sorted(outsiders)) if outsiders else "-"
-
-    # Build output row for CSV or summary table
-    row = ([
-        path.split("/")[2].split(".")[0],
-        reason,
-        insider_str,
-        outsider_str,
-        round(base_score, 3) if base_score else None,
-        round(sb_sb_ref, 3) if sb_sb_ref else None,
-        round(out_sb_ref, 3) if out_sb_ref else None,
-        round(out_out_ref, 3) if out_out_ref else None,
-        round(refinement, 3) if refinement else None,
-        round(final_score, 3)
-    ])
-
-    return final_score, row
-
-
-if __name__ == "__main__":
-    # Load data files
-    directory = 'data/synthetic'
-    files = sorted([os.path.join(directory, f) for f in os.listdir(directory)])
-
-    # Decide on how much info to display per process
-    verbose = True
-
-    # ALL
-    files = [
-        "data/synthetic/Log01_structured.json",
-        "data/synthetic/Log02_semiStructured.json",
-        "data/synthetic/Log03_looselyStructured.json",
-        "data/synthetic/Log04_structured.json",
-        "data/synthetic/Log05_structured.json",
-        "data/synthetic/Log06_semiStructured.json",
-        "data/synthetic/Log07_semiStructured.json",
-        "data/synthetic/Log08_looselyStructured.json",
-        "data/synthetic/Log09_unstructured.json",
-        "data/synthetic/Log10_semiStructured.json",
-        "data/synthetic/Log11_looselyStructured.json",
-        "data/synthetic/Log12_structured.json",
-        "data/synthetic/Log13_semiStructured.json",
-        "data/synthetic/Log14_looselyStructured.json",
-        "data/synthetic/Log15_structured.json",
-        "data/synthetic/Log16_looselyStructured.json",
-        "data/synthetic/Log17_semiStructured.json",
-        "data/synthetic/Log18_structured.json",
-        "data/synthetic/Log19_structured.json",
-        "data/synthetic/Log20_semiStructured.json",
-        "data/synthetic/Log21_looselyStructured.json",
-        "data/synthetic/Log22_looselyStructured.json",
-        "data/synthetic/Log23_looselyStructured.json",
-        "data/synthetic/Log24_looselyStructured.json",
-        "data/synthetic/Log26_structured.json",
-        "data/synthetic/Log27_semiStructured.json",
-        "data/synthetic/Log28_structured.json",
-        "data/synthetic/Log29_unstructured.json",
-        "data/synthetic/Log30_semiStructured.json",
-        #"data/augur.json",
-        #"data/chicken.json",
-    ]
-
-    # only structured
-    """FILES = [
-        "data/synthetic/Log01_structured.json",
-        "data/synthetic/Log04_structured.json",
-        "data/synthetic/Log05_structured.json",
-        "data/synthetic/Log12_structured.json",
-        "data/synthetic/Log15_structured.json",
-        "data/synthetic/Log18_structured.json",
-        "data/synthetic/Log19_structured.json"
-    ]"""
-
-    # only semi-structured
-    """FILES = [
-        "data/synthetic/Log02_semiStructured.json",
-        "data/synthetic/Log06_semiStructured.json",
-        "data/synthetic/Log07_semiStructured.json",
-        "data/synthetic/Log10_semiStructured.json",
-        "data/synthetic/Log13_semiStructured.json",
-        "data/synthetic/Log17_semiStructured.json",
-        "data/synthetic/Log20_semiStructured.json",
-        "data/synthetic/Log30_semiStructured.json",
-    ]"""
-
-    # only loosely structured
-    """FILES = [
-        "data/synthetic/Log03_looselyStructured.json",
-        "data/synthetic/Log08_looselyStructured.json",
-        "data/synthetic/Log11_looselyStructured.json",    
-        "data/synthetic/Log03_looselyStructured.json",
-        "data/synthetic/Log08_looselyStructured.json",
-        "data/synthetic/Log11_looselyStructured.json",
-        "data/synthetic/Log14_looselySemiStructured.json",
-        "data/synthetic/Log16_looselyStructured.json",
-        "data/synthetic/Log21_looselyStructured.json",
-        "data/synthetic/Log22_looselyStructured.json",
-        "data/synthetic/Log23_looselyStructured.json",
-        "data/synthetic/Log24_looselyStructured.json",
-        "data/synthetic/Log29_unstructured.json"
-    ]"""
-
-    """files = [
-        "data/synthetic/Log13_semiStructured.json"
-    ]"""
-    
-    #files.remove("data/synthetic/Log07_semiStructured.json")
-
-    # Score each file and aggregate results
-    summary_rows = []
-    for f in files:
-        final_score, row = score_process(f, verbose)
-        summary_rows.append(row)
-
-    # print table of all results
-    print(tabulate(
-        summary_rows,
-        headers=[
-            "File",
-            "SB",
-            "Insiders",
-            "Outsiders",
-            "Base-Score",
-            #"SBs (intra)",
-            "SB vs. SB",
-            "Out vs. SB",
-            "Out vs. Out",
-            "Refinement",
-            "Score"
-        ],
-        tablefmt="grid"
-    ))
-
+    return final_score, (n_sbs_str, block_acts, outsiders, base_score, sb_sb_ref, out_sb_ref, out_out_ref, refinement)
