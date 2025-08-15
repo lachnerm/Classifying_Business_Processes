@@ -15,30 +15,6 @@ def load_relationships(path):
     return relationships
 
 
-def find_first_allowed_pred(x, preds, allowed_preds):
-    """
-    Find the first predecessor of a node that is in the allowed set.
-    Traverses backwards through the predecessor graph until:
-      - an allowed predecessor is found with no further predecessors, or
-      - no allowed predecessor is found (returns the original node).
-    
-    Args:
-        x (str): Current activity/node.
-        preds (dict): Mapping of node → list of predecessors.
-        allowed_preds (set): Set of allowed predecessor nodes.
-    
-    Returns:
-        str: First allowed predecessor found, or original node.
-    """
-    if x in allowed_preds and not preds.get(x):
-        return x
-
-    for p in preds.get(x, []):
-        if p in allowed_preds:
-            return find_first_allowed_pred(p, preds, allowed_preds)
-    return x
-
-
 def flatten_blocks(blocks, include_split_merge=True):
     """
     Flatten a list of blocks into a single set of activity names.
@@ -122,6 +98,30 @@ def earliest_among(nodes, succ):
         set: Subset of nodes that are earliest.
     """
     return {n for n in nodes if not any(n in succ[m] for m in nodes if m != n)}
+
+
+def find_first_allowed_pred(x, preds, allowed_preds):
+    """
+    Find the first predecessor of a node that is in the allowed set.
+    Traverses backwards through the predecessor graph until:
+      - an allowed predecessor is found with no further predecessors, or
+      - no allowed predecessor is found (returns the original node).
+    
+    Args:
+        x (str): Current activity/node.
+        preds (dict): Mapping of node → list of predecessors.
+        allowed_preds (set): Set of allowed predecessor nodes.
+    
+    Returns:
+        str: First allowed predecessor found, or original node.
+    """
+    if x in allowed_preds and not preds.get(x):
+        return x
+
+    for p in preds.get(x, []):
+        if p in allowed_preds:
+            return find_first_allowed_pred(p, preds, allowed_preds)
+    return x
 
 
 def get_super_block_acts(super_block):
