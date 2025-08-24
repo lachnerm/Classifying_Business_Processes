@@ -1,7 +1,6 @@
-from itertools import combinations, permutations
+from itertools import permutations
 from collections import defaultdict, Counter
 from collections import defaultdict
-import random
 from utils import flatten_blocks, flatten_block, earliest_among, latest_among, find_first_allowed_pred, flatten_block_acts
 
 def build_super_blocks(blocks, relationships):
@@ -143,7 +142,7 @@ def detect_blocks(relationships):
     - XOR blocks: exclusive choices between multiple alternative branches.
     - PAR blocks: parallel branches that always co-occur.
     - Optional blocks: single optional activities between two fixed activities.
-    - SEQUENCE blocks: linear sequences of activities that always co-occur in fixed order.
+    - Sequence blocks: linear sequences of activities that always co-occur in fixed order.
 
     All blocks are derived based on temporal and existential relations between activities.
     Nested structures are cleaned to avoid overlapping or redundant blocks.
@@ -154,16 +153,13 @@ def detect_blocks(relationships):
 
     Returns:
         List[Dict]: A list of detected block structures. Each block contains:
-            - "block_type": one of {"XOR", "PAR", "SEQUENCE"}
+            - "block_type": one of {"XOR", "PAR", "OPT", "SEQ"}
             - "activities": the grouped activities or branches
             - "start": the split activity (if applicable)
             - "end": the merge activity (if applicable)
             - "nested": any nested blocks (if present)
     """
     acts = list(relationships.keys())
-
-    # Shuffle to prevent artifacts caused by activity ordering
-    random.shuffle(acts)
 
     # Extract pairwise temporal and existential relations for all activity pairs
     temporal = {
@@ -176,25 +172,26 @@ def detect_blocks(relationships):
     }
 
     # Initialize (direct) predecessor/successor dictionaries
-    preds = {a: set() for a in acts}
-    succs = {a: set() for a in acts}
-    direct_preds = {a: set() for a in acts}
-    direct_succs = {a: set() for a in acts}
+    preds = {a: list() for a in acts}
+    succs = {a: list() for a in acts}
+    direct_preds = {a: list() for a in acts}
+    direct_succs = {a: list() for a in acts}
 
     # Build (direct) successor/predecessor relations
-    for a, b in combinations(acts, 2):
-        if "<" in temporal[a][b]:
-            succs[a].add(b)
-            preds[b].add(a)
-            if "d" in temporal[a][b]: 
-                direct_succs[a].add(b)
-                direct_preds[b].add(a)
-        if "<" in temporal[b][a]:
-            succs[b].add(a)
-            preds[a].add(b)
-            if "d" in temporal[b][a]:
-                direct_succs[b].add(a)
-                direct_preds[a].add(b)
+    for a in relationships:
+        for b in relationships[a]:
+            if "<" in temporal[a][b]:
+                succs[a].append(b)
+                preds[b].append(a)
+                if "d" in temporal[a][b]: 
+                    direct_succs[a].append(b)
+                    direct_preds[b].append(a)
+            if "<" in temporal[b][a]:
+                succs[b].append(a)
+                preds[a].append(b)
+                if "d" in temporal[b][a]:
+                    direct_succs[b].append(a)
+                    direct_preds[a].append(b)
 
 
     # Precompute (non-)co-occurrence flags
@@ -221,7 +218,7 @@ def detect_blocks(relationships):
     optional_blocks = get_optional_blocks(acts, xor_blocks, succs, temporal, existential)
 
     # Identify sequence blocks 
-    seq_blocks = get_sequences(acts, direct_succs, existential)
+    seq_blocks = get_sequence_blocks(acts, direct_succs, existential)
 
     # Remove redundant blocks caused by XOR/PAR nesting
     xor_blocks_clean = remove_duplicate_blocks_from_nesting(xor_blocks, par_blocks)
@@ -587,7 +584,7 @@ def get_par_blocks(acts, preds, succs, direct_preds, direct_succs, temporal, exi
 
 def get_optional_blocks(acts, xor_blocks, succs, temporal, existential):
     """
-    Identifies optional XOR blocks in the process model.
+    Identifies optional blocks in the process model.
 
     An optional block is a structure where:
     - A block activity z is conditionally executed between two activities x and y.
@@ -633,7 +630,7 @@ def get_optional_blocks(acts, xor_blocks, succs, temporal, existential):
                         # Ensure x, z, or y are not already part of an XOR block
                         if not any(act in block_acts_flat for act in [x, y, z]):
                             opt_blocks.append({
-                                "block_type": "OPTIONAL",
+                                "block_type": "OPT",
                                 "activities": [z],
                                 "nested": [],
                                 "start": x,
@@ -681,11 +678,11 @@ def get_optional_blocks(acts, xor_blocks, succs, temporal, existential):
     return opt_blocks_clean
 
 
-def get_sequences(acts, direct_succs, existential):
+def get_sequence_blocks(acts, direct_succs, existential):
     """
-    Identifies SEQUENCE blocks in the process model.
+    Identifies sequence blocks in the process model.
 
-    A SEQUENCE block is a structure where:
+    A sequence block is a structure where:
     - A set of activities are directly connected and always co-occur in the same strict temporal order.
     - Each activity has exactly one direct successor with:
         * (a, b): existential = "<=>"
@@ -705,10 +702,10 @@ def get_sequences(acts, direct_succs, existential):
         existential (Dict[str, Dict[str, str]]): Existential relations between activities (e.g., "<=>").
 
     Returns:
-        List[Dict]: Cleaned list of SEQUENCE blocks.
+        List[Dict]: Cleaned list of sequence blocks.
     """
 
-    sequences = []
+    seq_blocks = []
     # Activities already assigned to a sequence
     visited = set()
 
@@ -739,8 +736,8 @@ def get_sequences(acts, direct_succs, existential):
         # Only add sequence if non-trivial (at least 2 elements)
         if len(sequence) > 1:
             visited.update(sequence)
-            sequences.append({
-                "block_type": "SEQUENCE",
+            seq_blocks.append({
+                "block_type": "SEQ",
                 "activities": sequence[1:-1],
                 "nested":     [],
                 "start":      sequence[0],
@@ -748,8 +745,8 @@ def get_sequences(acts, direct_succs, existential):
             })
 
     # Remove overlapping or redundant sequences
-    full_acts = [flatten_block(seq) for seq in sequences]
-    keep = [True] * len(sequences)
+    full_acts = [flatten_block(seq) for seq in seq_blocks]
+    keep = [True] * len(seq_blocks)
 
     for i in range(len(full_acts)):
         for j in range(len(full_acts)):
@@ -758,9 +755,9 @@ def get_sequences(acts, direct_succs, existential):
                 keep[i] = False  
                 break
 
-    sequences_clean = [seq for seq, k in zip(sequences, keep) if k]
+    seq_blocks_clean = [seq for seq, k in zip(seq_blocks, keep) if k]
 
-    return sequences_clean
+    return seq_blocks_clean
 
 
 
