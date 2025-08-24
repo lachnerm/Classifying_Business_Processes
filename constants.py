@@ -5,22 +5,20 @@ class_score_thresholds = {
 }
 
 REFINEMENT_SCORES_SB_TO_SB = {
-    # Augur
-    (">d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #("<d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-
     # Don't occur
-    #("-",  "∧"):    -0.60,  # NAND (parallel)
-    #("-",  "v"):    -0.60,  # OR relationship
-    #("<d", "=>"):   +0.30,  # directly leads‑to
-    #(">d", "=>"):   +0.30,  # directly leads‑to
-    #("<d", "<="):   +0.30,  # directly precedes
-    #(">d", "<="):   +0.30,  # directly precedes
-    #("-",  "</=>"): +0.30,  # non‑co‑occurrence (XOR)
-    #(">",  "<="):   +0.50,  # precedes
-    #("<",  "<="):   +0.50,  # precedes
-    #("<d", "-"):    +0.30,  # direct before
-    #(">d", "-"):    +0.30,  # direct after
+    #(">d", "<=>"):  +0.00,  # direct ordered co‑occurrence
+    #("<d", "<=>"):  +0.00,  # direct ordered co‑occurrence
+    #("-",  "∧"):    +0.00,  # NAND (parallel)
+    #("-",  "v"):    +0.00,  # OR relationship
+    #("<d", "=>"):   +0.00,  # directly leads‑to
+    #(">d", "=>"):   +0.00,  # directly leads‑to
+    #("<d", "<="):   +0.00,  # directly precedes
+    #(">d", "<="):   +0.00,  # directly precedes
+    #("-",  "</=>"): +0.00,  # non‑co‑occurrence (XOR)
+    #(">",  "<="):   +0.00,  # precedes
+    #("<",  "<="):   +0.00,  # precedes
+    #("<d", "-"):    +0.00,  # direct before
+    #(">d", "-"):    +0.00,  # direct after
 
     # Can occur if there is a fragment that can (but does not have to) occur between two blocks that are ordered
     # For example log 6, g can occur between both blocks
@@ -63,22 +61,20 @@ REFINEMENT_SCORES_SB_TO_SB = {
 }
 
 REFINEMENT_SCORES_OUT_TO_SB = {
-    # Note: Weights are smaller here than others as outsiders are already penalized via base score, don't penalize to strong here
-
     # Don't occur
-    #("<d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #(">d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #("<d", "=>"):   +0.80,  # directly leads‑to
-    #(">d", "=>"):   +0.80,  # directly leads‑to
-    #("-",  "</=>"): +0.70,  # non‑co‑occurrence (XOR)
-    #("<d", "-"):    +0.60,  # direct before
-    #("-",  "∧"):    -0.30,  # NAND (parallel)
-    #("-",  "v"):    -0.30,  # OR relationship
-    #("<",  "<=>"):  +0.50,  # ordered co‑occurrence
-    #("<d", "<="):   +0.25,  # directly precedes
-    #("<d", "-"):    +0.10,  # direct before
-    #("-",  "</=>"): +0.20,  # non‑co‑occurrence (XOR)
-    #(">d", "<="):   +0.25,  # directly precedes
+    #("<d", "<=>"):  +0.00,  # direct ordered co‑occurrence
+    #(">d", "<=>"):  +0.00,  # direct ordered co‑occurrence
+    #("<d", "=>"):   +0.00,  # directly leads‑to
+    #(">d", "=>"):   +0.00,  # directly leads‑to
+    #("-",  "</=>"): +0.00,  # non‑co‑occurrence (XOR)
+    #("<d", "-"):    +0.00,  # direct before
+    #("-",  "∧"):    +0.00,  # NAND (parallel)
+    #("-",  "v"):    +0.00,  # OR relationship
+    #("<",  "<=>"):  +0.00,  # ordered co‑occurrence
+    #("<d", "<="):   +0.00,  # directly precedes
+    #("<d", "-"):    +0.00,  # direct before
+    #("-",  "</=>"): +0.00,  # non‑co‑occurrence (XOR)
+    #(">d", "<="):   +0.00,  # directly precedes
 
     # All of these can occur if block and outsider have to occur with temporal ordering, but other outsiders or fragments can occur in between
     # For example log 20, XOR (a,(b,c)) and g both occur with a being first, but many other activities can occur in between
@@ -118,8 +114,8 @@ REFINEMENT_SCORES_OUT_TO_SB = {
     # Can occur if outsider and block both don't have to exists, but if they do, they have a temporal ordering
     # For example log 20, XOR (a,(b,c)) and f -> here for (f,b) and (f,c), but is due to no merge for XOR, special case
     # Also occurs in log 12
-    (">",  "-"):    +0.05,  # after
     ("<",  "-"):    +0.05,  # before
+    (">",  "-"):    +0.05,  # after
 
 
     # Can occur if outsider and block have no temporal ordering, but one-way existential
@@ -140,16 +136,16 @@ REFINEMENT_SCORES_OUT_TO_SB = {
 
 REFINEMENT_SCORES_OUT_TO_OUT = {
     # Don't occur
-    #("<d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #(">d", "<=>"):  +0.50,  # direct ordered co‑occurrence
-    #("<d", "=>"):   +0.80,  # directly leads‑to
-    #("<d", "-"):    +0.60,  # direct before
-    #(">d", "-"):    +0.60,  # direct after
-    #("-",  "∧"):    -0.30,  # NAND (parallel)
-    #("-",  "v"):    -0.30,  # OR relationship
-    #(">",  "<=>"):  +1.00,  # ordered co‑occurrence
-    #("<d",  "-"):    +0.40,  # direct before
-    #(">",  "=>"):   +0.50,  # leads‑to
+    #("<d", "<=>"):  +0.00,  # direct ordered co‑occurrence
+    #(">d", "<=>"):  +0.00,  # direct ordered co‑occurrence
+    #("<d", "=>"):   +0.00,  # directly leads‑to
+    #("<d", "-"):    +0.00,  # direct before
+    #(">d", "-"):    +0.00,  # direct after
+    #("-",  "∧"):    +0.00,  # NAND (parallel)
+    #("-",  "v"):    +0.00,  # OR relationship
+    #(">",  "<=>"):  +0.00,  # ordered co‑occurrence
+    #("<d",  "-"):   +0.00,  # direct before
+    #(">",  "=>"):   +0.00,  # leads‑to
 
     # Can occur if complex block nesting doesn't capture all block activities e.g. log 19
     # Can occur for succession relationship, e.g log 8
@@ -178,11 +174,12 @@ REFINEMENT_SCORES_OUT_TO_OUT = {
     # For example log 16, (c,d)
     # Log 11
     ("<",  "=>"):   +0.10,  # leads‑to
-    # Log 8 (e,a)
-    (">",  "=>"):   +0.10,  # leads‑to
 
     # Occurs in log 8, 13, 21
     ("<",  "<="):   +0.10,  # precedes
+
+    # Log 8 (e,a)
+    (">",  "=>"):   +0.10,  # leads‑to
 
     # For example log 11, (b,c)
     # No further occurences
@@ -194,11 +191,11 @@ REFINEMENT_SCORES_OUT_TO_OUT = {
     ("<",  "-"):    -0.05,  # before
     (">",  "-"):    -0.05,  # after
 
-    # Occurs in log 8, 13, 20
-    ("-",  "<="):   -0.15,  # implication (left)
-
     # Occurs in log 8, 11, 14, 20
     ("-",  "=>"):   -0.15,  # implication (right)
+
+    # Occurs in log 8, 13, 20
+    ("-",  "<="):   -0.15,  # implication (left)
     
     # Occurs often
     ("-",  "-"):    -0.25,  # fully independent
