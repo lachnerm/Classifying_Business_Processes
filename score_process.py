@@ -3,6 +3,7 @@ from itertools import combinations
 from utils import get_super_block_acts
 import math
 from constants import REFINEMENT_SCORES_OUT_TO_OUT, REFINEMENT_SCORES_OUT_TO_SB, REFINEMENT_SCORES_SB_TO_SB
+from warnings import warn
 
 def compute_base_score(super_blocks, all_acts, entropy_penalty=0.4, outsider_penalty_exponent=1.5):
     """
@@ -161,7 +162,8 @@ def refine_sb_to_sb(relations, super_blocks, verbose):
                     temp, exist = relations[end][start].split(",")
                     score = REFINEMENT_SCORES_SB_TO_SB.get((temp, exist))
                     if not score:
-                        raise KeyError(f"Unknown relation ({temp},{exist}) for ({end},{start})")
+                        warn(f"Unknown relation ({temp},{exist}) for ({end},{start}) - falling back to value 0")
+                        score = 0
                     scores.append(score)
                     if verbose:
                         print(f"    ({end}→{start}) = ({temp},{exist}) → {score:+.2f}")
@@ -234,7 +236,8 @@ def refine_out_to_sb(outsiders, relations, super_blocks, verbose):
                 # Map the relationship to a numeric refinement score
                 score = REFINEMENT_SCORES_OUT_TO_SB.get((temp, exist))
                 if not score:
-                    raise KeyError(f"Unknown relation ({temp},{exist}) for ({outsider},{act})")
+                    warn(f"Unknown relation ({temp},{exist}) for ({outsider},{act}) - falling back to value 0")
+                    score = 0
 
                 scores.append(score)
 
@@ -290,7 +293,8 @@ def refine_out_to_out(outsiders, relations, verbose):
         # Map to refinement score using predefined dictionary
         score = REFINEMENT_SCORES_OUT_TO_OUT.get((temp, exist))
         if not score:
-            raise KeyError(f"Unknown relation ({temp},{exist}) for ({out1},{out2})")
+            warn(f"Unknown relation ({temp},{exist}) for ({out1},{out2}) - falling back to value 0")
+            score = 0
         scores.append(score)
 
         if verbose:
